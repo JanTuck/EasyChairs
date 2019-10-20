@@ -1,6 +1,6 @@
 name: "${project.name}"
 main: "${project.groupId}.${project.artifactId}.${project.name}"
 version: "${project.version}"
-description: "${project.name} Purpur Plugin"
+description: "${project.name} Plugin"
 author: "BillyGalbreath"
 api-version: "1.14"

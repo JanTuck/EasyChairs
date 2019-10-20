@@ -7,11 +7,12 @@ import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.Tag;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
 import org.bukkit.block.data.Bisected;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.type.Stairs;
 import org.bukkit.craftbukkit.v1_14_R1.CraftWorld;
-import org.bukkit.craftbukkit.v1_14_R1.util.CraftChatMessage;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
@@ -50,65 +51,63 @@ public class EasyChairs extends JavaPlugin implements Listener {
                     return; // not a stair
                 }
 
-                final double offset = 0.25D;
-                double xOffset = 0.5D;
-                double zOffset = 0.5D;
-                switch (((Directional) block.getBlockData()).getFacing()) {
-                    case NORTH:
-                        zOffset += offset;
-                        break;
-                    case EAST:
-                        xOffset -= offset;
-                        break;
-                    case SOUTH:
-                        zOffset -= offset;
-                        break;
-                    case WEST:
-                        xOffset += offset;
-                        break;
+                // get location and direction
+                BlockFace facing = ((Directional) block.getBlockData()).getFacing();
+                Location loc = block.getLocation();
+
+                // setup location
+                double x = loc.getX() + 0.5D;
+                double y = loc.getY() + 0.3D;
+                double z = loc.getZ() + 0.5D;
+
+                // fix the seat offset
+                double offset = 0.25D;
+                if (facing == BlockFace.NORTH) z += offset;
+                else if (facing == BlockFace.EAST) x -= offset;
+                else if (facing == BlockFace.SOUTH) z -= offset;
+                else if (facing == BlockFace.WEST) x += offset;
+
+                // create nms entity so we can set rotation before adding to world
+                EntityArmorStand nmsStand = new EntityArmorStand(((CraftWorld) loc.getWorld()).getHandle(), x, y, z);
+
+                // set the rotation
+                nmsStand.lastYaw = nmsStand.yaw = Location.normalizeYaw(facing.ordinal() * 90);
+                nmsStand.lastPitch = nmsStand.pitch = 0;
+                nmsStand.setHeadRotation(nmsStand.yaw);
+
+                // add to world
+                if (!nmsStand.world.addEntity(nmsStand)) {
+                    nmsStand.die(); // was unable to add entity to world
+                    return;
                 }
 
-                final float yaw = Location.normalizeYaw(((Directional) block.getBlockData()).getFacing().ordinal() * 90);
+                // finish setting up rest of the armorstand properties
+                ArmorStand bukkitStand = (ArmorStand) nmsStand.getBukkitLivingEntity();
+                bukkitStand.setGravity(false);
+                bukkitStand.setCanTick(false);
+                bukkitStand.setCanMove(false);
+                bukkitStand.setVisible(false);
+                bukkitStand.setMarker(true);
+                bukkitStand.setSmall(true);
+                bukkitStand.setCustomNameVisible(false);
+                bukkitStand.setCustomName("EasyChairs");
 
-                Location loc = block.getLocation();
-                loc.setYaw(yaw);
-                loc.setPitch(0);
+                // teleport player closer to chair (with proper rotation)
+                player.teleport(bukkitStand.getLocation());
 
-                EntityArmorStand armorstand = new EntityArmorStand(((CraftWorld) loc.getWorld()).getHandle(), loc.getX() + xOffset, loc.getY() + 0.3D, loc.getZ() + zOffset);
-
-                armorstand.lastYaw = armorstand.yaw = yaw;
-                armorstand.lastPitch = armorstand.pitch = 0;
-                armorstand.setHeadRotation(yaw);
-
-                armorstand.setNoGravity(true);
-                armorstand.canTick = false;
-                armorstand.canTickSetByAPI = true;
-                armorstand.canMove = false;
-                armorstand.setInvisible(true);
-                armorstand.setMarker(true);
-                armorstand.setSmall(true);
-                armorstand.setCustomNameVisible(false);
-                armorstand.setCustomName(CraftChatMessage.fromStringOrNull("EasyChairs"));
-
-                armorstand.world.addEntity(armorstand);
-
-                player.teleport(loc);
-
-                if (armorstand.getBukkitLivingEntity().addPassenger(player)) {
-                    event.setCancelled(true);
-                } else {
-                    armorstand.die();
+                // sit on chair
+                if (!bukkitStand.addPassenger(player)) {
+                    bukkitStand.remove(); // was unable to mount
                 }
             }
 
             @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
             public void onChairEject(EntityDismountEvent event) {
-                if (event.getEntityType() != EntityType.PLAYER) {
-                    return; // not a player
-                }
-                Entity vehicle = event.getDismounted();
-                if (isChair(vehicle)) {
-                    vehicle.remove();
+                if (event.getEntityType() == EntityType.PLAYER) {
+                    Entity vehicle = event.getDismounted();
+                    if (isChair(vehicle)) {
+                        vehicle.remove();
+                    }
                 }
             }
 
@@ -142,20 +141,19 @@ public class EasyChairs extends JavaPlugin implements Listener {
 
     @Override
     public void onDisable() {
-        Bukkit.getWorlds().forEach(world -> world.getEntities().stream()
-                .filter(EasyChairs::isChair)
-                .forEach(Entity::remove));
+        // remove all chairs from world all worlds
+        Bukkit.getWorlds().forEach(world ->
+                world.getEntities().stream()
+                        .filter(EasyChairs::isChair)
+                        .forEach(Entity::remove));
     }
 
     public static boolean isChair(Entity entity) {
-        if (entity == null) {
-            return false;
-        }
-        if (entity.getType() != EntityType.ARMOR_STAND) {
-            return false;
+        if (entity == null || entity.getType() != EntityType.ARMOR_STAND) {
+            return false; // not an armorstand
         }
         if (entity.isCustomNameVisible()) {
-            return false;
+            return false; // just checking in case player set name with nametag
         }
         String name = entity.getCustomName();
         return name != null && name.equals("EasyChairs");
@@ -163,11 +161,11 @@ public class EasyChairs extends JavaPlugin implements Listener {
 
     public static boolean isStair(Block block) {
         if (block == null || !Tag.STAIRS.isTagged(block.getType())) {
-            return false;
+            return false; // not a stairs block
         }
         Stairs stairs = (Stairs) block.getBlockData();
         if (stairs.getShape() != Stairs.Shape.STRAIGHT) {
-            return false;
+            return false; // ignore corner stairs
         }
         return stairs.getHalf() == Bisected.Half.BOTTOM;
     }
