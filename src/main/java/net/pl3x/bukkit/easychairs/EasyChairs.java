@@ -25,6 +25,8 @@ import org.bukkit.event.world.ChunkUnloadEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.spigotmc.event.entity.EntityDismountEvent;
 
+import java.util.Collection;
+
 public class EasyChairs extends JavaPlugin implements Listener {
     @Override
     public void onEnable() {
@@ -47,6 +49,10 @@ public class EasyChairs extends JavaPlugin implements Listener {
                 Block block = event.getClickedBlock();
                 if (!isStair(block)) {
                     return; // not a stair
+                }
+
+                if (hasChair(block)) {
+                    return; // chair already there
                 }
 
                 // get location and direction
@@ -161,5 +167,15 @@ public class EasyChairs extends JavaPlugin implements Listener {
             return false; // ignore corner stairs
         }
         return stairs.getHalf() == Bisected.Half.BOTTOM;
+    }
+
+    public static boolean hasChair(Block block) {
+        Collection<ArmorStand> list = block.getWorld().getNearbyEntitiesByType(ArmorStand.class, block.getLocation().toCenterLocation(), 0.5);
+        for (ArmorStand armorStand : list) {
+            if (isChair(armorStand)) {
+                return true;
+            }
+        }
+        return false;
     }
 }
