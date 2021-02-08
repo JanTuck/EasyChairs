@@ -51,6 +51,10 @@ public class EasyChairs extends JavaPlugin implements Listener {
                     return; // not a stair
                 }
 
+                if (isChair(player.getVehicle())) {
+                    return; // Currently inside a vehicle
+                }
+
                 if (hasChair(block)) {
                     return; // chair already there
                 }
